@@ -930,8 +930,16 @@ public partial class MainWindow
             }
 
             await HonorPendingVillageSwitchAsync(options, cancellationToken);
-            var forceVillageStatusSweep = _villageStatusRoundRuntime.ConsumeForceRequest();
-            await MaybeRunVillageStatusSweepAsync(options, cancellationToken, forceVillageStatusSweep);
+            var prioritizeDeadlineWork = _smartSleepPrioritizeDeadlineWorkOnWake;
+            if (!prioritizeDeadlineWork)
+            {
+                var forceVillageStatusSweep = _villageStatusRoundRuntime.ConsumeForceRequest();
+                await MaybeRunVillageStatusSweepAsync(options, cancellationToken, forceVillageStatusSweep);
+            }
+            else
+            {
+                AppendLog("[smart-sleep] deadline wake is checking queued work before Village scan.");
+            }
             await EnsureContinuousLoopConstructionStatusAsync(options, cancellationToken);
             await MaybeAnalyzeNewVillageDuringContinuousLoopAsync(options, cancellationToken);
             await EnsureContinuousLoopRuntimeItemsAsync(options, cancellationToken);
@@ -940,6 +948,7 @@ public partial class MainWindow
             var next = SelectNextQueueItemForContinuousLoop();
             if (next is not null)
             {
+                _smartSleepPrioritizeDeadlineWorkOnWake = false;
                 AppendLog(
                     $"[LOOP {tickId}] PICK group={next.Group}, task={next.TaskName}, "
                     + $"retries={next.Retries}/{next.MaxRetries}");
@@ -947,12 +956,30 @@ public partial class MainWindow
                 return new AutomationStateSnapshot([AutomationCandidate.FromQueueItem(next)]);
             }
 
+            if (prioritizeDeadlineWork)
+            {
+                _smartSleepPrioritizeDeadlineWorkOnWake = false;
+                var forceVillageStatusSweep = _villageStatusRoundRuntime.ConsumeForceRequest();
+                await MaybeRunVillageStatusSweepAsync(options, cancellationToken, forceVillageStatusSweep);
+                await EnsureContinuousLoopRuntimeItemsAsync(options, cancellationToken);
+                next = SelectNextQueueItemForContinuousLoop();
+                if (next is not null)
+                {
+                    AppendLog(
+                        $"[LOOP {tickId}] PICK group={next.Group}, task={next.TaskName}, "
+                        + $"retries={next.Retries}/{next.MaxRetries}");
+                    _automationSessionRuntime.MarkActivePass();
+                    return new AutomationStateSnapshot([AutomationCandidate.FromQueueItem(next)]);
+                }
+            }
+
             await MaybeKeepBrowserFreshDuringContinuousLoopAsync(options, cancellationToken);
             var waitDelay = ResolveContinuousLoopWaitDelay(options);
-            DateTimeOffset? smartSleepDeadline = waitDelay is { } trustedDelay
+            var smartSleepDelay = ResolveSmartSleepWaitDelay();
+            DateTimeOffset? smartSleepDeadline = smartSleepDelay is { } trustedDelay
                 ? DateTimeOffset.UtcNow.Add(trustedDelay)
                 : null;
-            _ = TryRequestSmartSleep(smartSleepDeadline);
+            var smartSleepRequested = TryRequestSmartSleep(smartSleepDeadline);
             var totalSeconds = AutomationDeadlinePolicy.ResolveWaitSeconds(
                 waitDelay,
                 options,
@@ -962,7 +989,8 @@ public partial class MainWindow
                 AppendLog($"[LOOP {tickId}] idle — nothing ready, waiting {totalSeconds}s");
             }
             var nextWakeAt = DateTimeOffset.UtcNow.AddSeconds(totalSeconds);
-            if (options.ContinuousKeepAliveEnabled
+            if (!smartSleepRequested
+                && options.ContinuousKeepAliveEnabled
                 && _automationSessionRuntime.NextKeepAliveAtUtc > DateTimeOffset.UtcNow
                 && _automationSessionRuntime.NextKeepAliveAtUtc < nextWakeAt)
             {
@@ -1014,6 +1042,7 @@ public partial class MainWindow
         var selected = SelectNextQueueItemForContinuousLoop();
         if (selected is not null)
         {
+            _smartSleepPrioritizeDeadlineWorkOnWake = false;
             return new AutomationStateSnapshot([AutomationCandidate.FromQueueItem(selected)]);
         }
 
@@ -1040,7 +1069,12 @@ public partial class MainWindow
             $"[AUTOQ {_automationPassRuntime.AutoQueueRunLogId}] WAIT "
             + $"{Math.Max(0, (nextDeferredItem.NextAttemptAt - now).TotalSeconds):F0}s "
             + $"for deferred task={nextDeferredItem.TaskName}");
-        _ = TryRequestSmartSleep(nextDeferredItem.NextAttemptAt);
+        var smartSleepDelay = SmartSleepDeadlinePolicy.ResolveNextDelay(
+            now,
+            eligibleItems,
+            _smartSleepDeadlineGroups,
+            nextConstructionAvailabilityUtc: null);
+        _ = TryRequestSmartSleep(smartSleepDelay is { } delay ? now.Add(delay) : null);
         return new AutomationStateSnapshot([AutomationCandidate.FromQueueItem(nextDeferredItem)]);
     }
 
@@ -2884,6 +2918,32 @@ public partial class MainWindow
         }
         catch
         {
+            return null;
+        }
+    }
+
+    private TimeSpan? ResolveSmartSleepWaitDelay()
+    {
+        try
+        {
+            var now = DateTimeOffset.UtcNow;
+            var deadlineItems = GetContinuousLoopRelevantQueueItems()
+                .Where(item => _smartSleepDeadlineGroups.Contains(item.Group))
+                .ToList();
+            var forecast = ResolveNextContinuousLoopForecast(now, queueItemsOverride: deadlineItems);
+            var nextConstructionAvailabilityUtc = forecast.Item?.Group == QueueGroup.Construction
+                && forecast.State == ContinuousLoopForecastState.Waiting
+                ? forecast.ReadyAtUtc
+                : null;
+            return SmartSleepDeadlinePolicy.ResolveNextDelay(
+                now,
+                deadlineItems,
+                _smartSleepDeadlineGroups,
+                nextConstructionAvailabilityUtc);
+        }
+        catch (Exception ex)
+        {
+            AppendLog($"[smart-sleep] deadline calculation failed; using fallback check: {ex.Message}");
             return null;
         }
     }

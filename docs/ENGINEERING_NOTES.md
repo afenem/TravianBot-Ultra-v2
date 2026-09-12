@@ -255,9 +255,11 @@ Published artifacts belong under `artifacts/`, never beside source files.
   If the recorded runtime is below the new limit and Allowed hours permit running, wake with zero added sleep delay.
 - Known queue deadlines are authoritative and may not be shortened by pacing.
 - Smart Sleep and Session pacing are mutually exclusive account modes, though both may be disabled. Smart Sleep may
-  close the browser only at a safe automation boundary when the shared forecast provides enough idle time; its saved
-  wake uses the configured before/after window, while a missing deadline uses a bounded fallback wake that forces one
-  Village Status Round. Allowed hours and Daily max remain hard boundaries for either enabled mode. Session-pacing
+  close the browser only at a safe automation boundary when a user-selected queue-group deadline provides enough idle
+  time; scheduled Village Scan and Keep Alive maintenance must not wake it. Its saved wake uses the configured
+  before/after window and prioritizes due queue work before an overdue scan, while a missing selected deadline uses a
+  bounded fallback wake that forces one Village Status Round. Allowed hours and Daily max remain hard boundaries for
+  either enabled mode. Session-pacing
   sleep/wake callbacks may originate from an automation thread and must enter Desktop orchestration through the WPF
   dispatcher before reading or updating UI-owned state.
 - Action pacing is mandatory. Persisted configuration and incoming payloads may change its delay ranges but may

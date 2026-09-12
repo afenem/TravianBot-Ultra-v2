@@ -8,8 +8,10 @@ using System.Windows.Threading;
 using Microsoft.Win32;
 using TbotUltra.Core.Configuration;
 using TbotUltra.Desktop.Services;
+using TbotUltra.Desktop.Services.Orchestration;
 using TbotUltra.Desktop.ViewModels;
 using TbotUltra.Desktop.Models;
+using TbotUltra.Worker.Services;
 
 namespace TbotUltra.Desktop;
 
@@ -1550,6 +1552,9 @@ public partial class SettingsWindow : Window
         SettingsVm.Pacing.SmartSleepWakeAfterMinutes = ReadInt(BotOptionPayloadKeys.SmartSleepWakeAfterMinutes, PacingDefaults.SmartSleepWakeAfterMinutes).ToString(CultureInfo.InvariantCulture);
         SettingsVm.Pacing.SmartSleepFallbackMinMinutes = ReadInt(BotOptionPayloadKeys.SmartSleepFallbackMinMinutes, PacingDefaults.SmartSleepFallbackMinMinutes).ToString(CultureInfo.InvariantCulture);
         SettingsVm.Pacing.SmartSleepFallbackMaxMinutes = ReadInt(BotOptionPayloadKeys.SmartSleepFallbackMaxMinutes, PacingDefaults.SmartSleepFallbackMaxMinutes).ToString(CultureInfo.InvariantCulture);
+        SettingsVm.Pacing.SetSmartSleepDeadlineGroups(
+            SmartSleepDeadlinePolicy.ReadGroups(_config[BotOptionPayloadKeys.SmartSleepDeadlineGroups])
+                .Select(QueueGroupCatalog.GetKey));
         SettingsVm.Pacing.SessionRunMinMinutes = ReadInt(BotOptionPayloadKeys.SessionPacingRunMinMinutes, PacingDefaults.SessionPacingRunMinMinutes).ToString(CultureInfo.InvariantCulture);
         SettingsVm.Pacing.SessionRunMaxMinutes = ReadInt(BotOptionPayloadKeys.SessionPacingRunMaxMinutes, PacingDefaults.SessionPacingRunMaxMinutes).ToString(CultureInfo.InvariantCulture);
         SettingsVm.Pacing.SessionSleepMinMinutes = ReadInt(BotOptionPayloadKeys.SessionPacingSleepMinMinutes, PacingDefaults.SessionPacingSleepMinMinutes).ToString(CultureInfo.InvariantCulture);
@@ -1622,6 +1627,10 @@ public partial class SettingsWindow : Window
         target[BotOptionPayloadKeys.SmartSleepWakeAfterMinutes] = ReadIntText(SettingsVm.Pacing.SmartSleepWakeAfterMinutes, PacingDefaults.SmartSleepWakeAfterMinutes, 0, 1440);
         target[BotOptionPayloadKeys.SmartSleepFallbackMinMinutes] = ReadIntText(SettingsVm.Pacing.SmartSleepFallbackMinMinutes, PacingDefaults.SmartSleepFallbackMinMinutes, 1, 10080);
         target[BotOptionPayloadKeys.SmartSleepFallbackMaxMinutes] = ReadIntText(SettingsVm.Pacing.SmartSleepFallbackMaxMinutes, PacingDefaults.SmartSleepFallbackMaxMinutes, 1, 10080);
+        target[BotOptionPayloadKeys.SmartSleepDeadlineGroups] = new JsonArray(
+            SettingsVm.Pacing.GetSelectedSmartSleepDeadlineGroups()
+                .Select(groupKey => JsonValue.Create(groupKey))
+                .ToArray());
         target[BotOptionPayloadKeys.SessionPacingRunMinMinutes] = ReadIntText(SettingsVm.Pacing.SessionRunMinMinutes, PacingDefaults.SessionPacingRunMinMinutes, 1, 10080);
         target[BotOptionPayloadKeys.SessionPacingRunMaxMinutes] = ReadIntText(SettingsVm.Pacing.SessionRunMaxMinutes, PacingDefaults.SessionPacingRunMaxMinutes, 1, 10080);
         target[BotOptionPayloadKeys.SessionPacingSleepMinMinutes] = ReadIntText(SettingsVm.Pacing.SessionSleepMinMinutes, PacingDefaults.SessionPacingSleepMinMinutes, 5, 10080);

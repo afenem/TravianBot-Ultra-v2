@@ -1,4 +1,5 @@
 using TbotUltra.Desktop.ViewModels;
+using TbotUltra.Worker.Domain;
 using Xunit;
 
 namespace TbotUltra.Desktop.Tests;
@@ -19,6 +20,18 @@ public sealed class PacingSettingsViewModelTests
     }
 
     [Fact]
+    public void SmartSleepDeadlineGroups_DefaultToAllAndAllowIndividualGroupsToBeDisabled()
+    {
+        var vm = new PacingSettingsViewModel();
+
+        Assert.Equal(Enum.GetValues<QueueGroup>().Length, vm.GetSelectedSmartSleepDeadlineGroups().Count);
+
+        vm.SetSmartSleepDeadlineGroups(["construction", "hero"]);
+
+        Assert.Equal(["construction", "hero"], vm.GetSelectedSmartSleepDeadlineGroups());
+    }
+
+    [Fact]
     public void ResetDefaults_RestoresEditablePacingValues()
     {
         var vm = new PacingSettingsViewModel
@@ -29,6 +42,7 @@ public sealed class PacingSettingsViewModelTests
             FarmListStepDelayMaxSeconds = "12",
             ShortVillageDeferSeconds = 90,
         };
+        vm.SetSmartSleepDeadlineGroups(["hero"]);
 
         vm.ResetDefaults();
 
@@ -39,6 +53,7 @@ public sealed class PacingSettingsViewModelTests
         Assert.Equal(60, vm.ShortVillageDeferSeconds);
         Assert.Equal("10", vm.SmartSleepWakeBeforeMinutes);
         Assert.Equal("20", vm.SmartSleepWakeAfterMinutes);
+        Assert.Equal(Enum.GetValues<QueueGroup>().Length, vm.GetSelectedSmartSleepDeadlineGroups().Count);
     }
 
     [Theory]

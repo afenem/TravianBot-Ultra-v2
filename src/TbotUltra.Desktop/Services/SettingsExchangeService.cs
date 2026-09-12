@@ -2,6 +2,7 @@ using System.IO;
 using System.Text.Json;
 using System.Text.Json.Nodes;
 using TbotUltra.Core.Configuration;
+using TbotUltra.Worker.Services;
 
 namespace TbotUltra.Desktop.Services;
 
@@ -352,6 +353,7 @@ internal sealed class SettingsExchangeService
         Add(Int(BotOptionPayloadKeys.SmartSleepWakeAfterMinutes, "Pacing", 0, 1440));
         Add(Int(BotOptionPayloadKeys.SmartSleepFallbackMinMinutes, "Pacing", 1, 10080));
         Add(Int(BotOptionPayloadKeys.SmartSleepFallbackMaxMinutes, "Pacing", 1, 10080));
+        Add(QueueGroups(BotOptionPayloadKeys.SmartSleepDeadlineGroups, "Pacing"));
         Add(Int(BotOptionPayloadKeys.ShortVillageDeferSeconds, "Pacing", 20, 90, PacingDefaults.ShortVillageDeferChoicesSeconds));
         Add(Int(BotOptionPayloadKeys.ContinuousKeepAliveMinMinutes, "Pacing", 1, 1440));
         Add(Int(BotOptionPayloadKeys.ContinuousKeepAliveMaxMinutes, "Pacing", 1, 1440));
@@ -480,6 +482,37 @@ internal sealed class SettingsExchangeService
             }
 
             normalized = new JsonArray(hours.OrderBy(hour => hour).Select(hour => JsonValue.Create(hour)).ToArray());
+            reason = string.Empty;
+            return true;
+        });
+
+    private static PortableSetting QueueGroups(string key, string category)
+        => new(key, category, (JsonNode node, out JsonNode normalized, out string reason) =>
+        {
+            if (node is not JsonArray array)
+            {
+                normalized = null!;
+                reason = "Expected an array of queue group names.";
+                return false;
+            }
+
+            var groups = new HashSet<TbotUltra.Worker.Domain.QueueGroup>();
+            foreach (var item in array)
+            {
+                if (!TryReadString(item, out var groupKey)
+                    || !QueueGroupCatalog.TryParse(groupKey, out var group)
+                    || !groups.Add(group))
+                {
+                    normalized = null!;
+                    reason = "Queue groups must be valid and unique.";
+                    return false;
+                }
+            }
+
+            normalized = new JsonArray(groups
+                .OrderBy(group => (int)group)
+                .Select(group => JsonValue.Create(QueueGroupCatalog.GetKey(group)))
+                .ToArray());
             reason = string.Empty;
             return true;
         });

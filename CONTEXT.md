@@ -153,7 +153,7 @@ What was actually running (logged-in state, continuous loop, queue auto-run) whe
 _Avoid_: pre-sleep flags, wake state
 
 **Smart Sleep**:
-A bot-behavior mode that closes the browser when a trusted next automation deadline leaves a sufficient sleep opportunity, then restores the prior automation state within its Smart Sleep Wake Window. When no work deadline exists, it uses a randomized fallback check. Smart Sleep and Session Pacing are mutually exclusive, but both may be disabled.
+A bot-behavior mode that closes the browser when a trusted deadline from a user-selected queue group leaves a sufficient sleep opportunity, then restores the prior automation state within its Smart Sleep Wake Window. Keep Alive and scheduled Village Scan maintenance never wake it. When no selected work deadline exists, it uses a randomized fallback check that runs one Village Status Round. Smart Sleep and Session Pacing are mutually exclusive, but both may be disabled.
 _Avoid_: adaptive session pacing, idle break
 
 **Smart Sleep Wake Window**:

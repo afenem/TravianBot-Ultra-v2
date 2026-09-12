@@ -310,6 +310,7 @@ public static class BotOptionPayloadKeys
     public const string SmartSleepWakeAfterMinutes = "smart_sleep_wake_after_minutes";
     public const string SmartSleepFallbackMinMinutes = "smart_sleep_fallback_min_minutes";
     public const string SmartSleepFallbackMaxMinutes = "smart_sleep_fallback_max_minutes";
+    public const string SmartSleepDeadlineGroups = "smart_sleep_deadline_groups";
     public const string SessionActivityHistory = "session_activity_history";
 
     public const string ActionPacingEnabled = "action_pacing_enabled";

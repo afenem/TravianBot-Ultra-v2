@@ -383,6 +383,7 @@ public sealed class BotConfigStoreTests : IDisposable
         config[BotOptionPayloadKeys.SessionPacingSleepMinMinutes] = 45;
         config[BotOptionPayloadKeys.SessionPacingSleepMaxMinutes] = 90;
         config[BotOptionPayloadKeys.SessionPacingAllowedHours] = new JsonArray(0, 1, 2);
+        config[BotOptionPayloadKeys.SmartSleepDeadlineGroups] = new JsonArray("construction", "hero");
         config[BotOptionPayloadKeys.SessionPacingDailyMaxHours] = 12;
         config[BotOptionPayloadKeys.SessionPacingRuntimeDate] = "2026-06-14";
         config[BotOptionPayloadKeys.SessionPacingRuntimeSeconds] = 3600;
@@ -402,6 +403,7 @@ public sealed class BotConfigStoreTests : IDisposable
         Assert.False(global.ContainsKey(BotOptionPayloadKeys.SessionPacingSleepMinMinutes));
         Assert.False(global.ContainsKey(BotOptionPayloadKeys.SessionPacingSleepMaxMinutes));
         Assert.False(global.ContainsKey(BotOptionPayloadKeys.SessionPacingAllowedHours));
+        Assert.False(global.ContainsKey(BotOptionPayloadKeys.SmartSleepDeadlineGroups));
         Assert.False(global.ContainsKey(BotOptionPayloadKeys.SessionPacingDailyMaxHours));
         Assert.False(global.ContainsKey(BotOptionPayloadKeys.SessionPacingDailyHistory));
         Assert.False(global.ContainsKey(BotOptionPayloadKeys.ActionPacingTaskMinSeconds));
@@ -410,6 +412,7 @@ public sealed class BotConfigStoreTests : IDisposable
         Assert.Equal(45, account[BotOptionPayloadKeys.SessionPacingSleepMinMinutes]!.GetValue<int>());
         Assert.Equal(90, account[BotOptionPayloadKeys.SessionPacingSleepMaxMinutes]!.GetValue<int>());
         Assert.Equal(12, account[BotOptionPayloadKeys.SessionPacingDailyMaxHours]!.GetValue<int>());
+        Assert.Equal(2, account[BotOptionPayloadKeys.SmartSleepDeadlineGroups]!.AsArray().Count);
         Assert.Equal("2026-06-14", account[BotOptionPayloadKeys.SessionPacingRuntimeDate]!.GetValue<string>());
         Assert.Equal(3600, account[BotOptionPayloadKeys.SessionPacingRuntimeSeconds]!.GetValue<int>());
         Assert.NotNull(account[BotOptionPayloadKeys.SessionPacingDailyHistory]);
