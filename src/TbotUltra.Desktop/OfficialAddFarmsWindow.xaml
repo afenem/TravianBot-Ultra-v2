@@ -91,6 +91,8 @@
                                           DisplayMemberPath="DisplayName"
                                           SelectionChanged="SourceListComboBox_SelectionChanged" />
                                 <Border Margin="0,10,0,0"
+                                        Width="190"
+                                        HorizontalAlignment="Left"
                                         Background="{DynamicResource SurfaceBrush}"
                                         BorderBrush="{DynamicResource BorderSubtleBrush}"
                                         BorderThickness="1"
