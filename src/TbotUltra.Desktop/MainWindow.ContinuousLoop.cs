@@ -1,6 +1,5 @@
 using System;
 using System.Collections.Generic;
-using System.Diagnostics;
 using System.Linq;
 using System.Threading;
 using System.Threading.Tasks;
@@ -563,11 +562,6 @@ public partial class MainWindow
 
     private static readonly TimeSpan LoopPickVerboseThrottle = TimeSpan.FromMinutes(5);
     private static readonly TimeSpan GoldClubInactiveRecheckInterval = TimeSpan.FromMinutes(10);
-    // Idle loop passes no longer log "[LOOP n] START" + "WAIT" every few seconds. Instead a single
-    // "[LOOP n] idle" heartbeat is logged at most this often while nothing is ready, so the log shows the
-    // loop is alive without the per-pass spine. Active passes (a PICK) and failures still log in full.
-    private static readonly TimeSpan LoopIdleHeartbeatInterval = TimeSpan.FromMinutes(2);
-
     private async Task TriggerQueueAutoRunAsync()
     {
         if (IsFreezeActive || IsSessionSleeping)
@@ -883,152 +877,6 @@ public partial class MainWindow
                 "[village-membership] profile verification failed; state-changing automation remains paused "
                 + $"until {_villageMembershipVerificationNotBeforeUtc:HH:mm}: {FormatExceptionForLog(ex)}");
             return false;
-        }
-    }
-
-    private async ValueTask<AutomationStateSnapshot> ReadContinuousAutomationStateAsync(
-        CancellationToken cancellationToken)
-    {
-        var options = AutomationExecutionOptions.WithoutImplicitVillageTarget(LoadBotOptions());
-        var tickId = _automationPassRuntime.BeginContinuousPass();
-        var tickStopwatch = Stopwatch.StartNew();
-        try
-        {
-            if (TryScheduleAutomaticProxyRecovery(options))
-            {
-                return new AutomationStateSnapshot([], IsComplete: true);
-            }
-
-            var networkBackoffRemaining = _automationNetworkBackoff.Remaining;
-            if (networkBackoffRemaining > TimeSpan.Zero)
-            {
-                AppendLog($"[LOOP {tickId}] WAIT {Math.Ceiling(networkBackoffRemaining.TotalSeconds):F0}s");
-                return new AutomationStateSnapshot(
-                    [],
-                    NextWakeAt: DateTimeOffset.UtcNow.Add(networkBackoffRemaining));
-            }
-
-            await EnsureChromiumInstalledAsync();
-            if (!await EnsureVillageMembershipVerifiedBeforeAutomationAsync(options, cancellationToken))
-            {
-                return new AutomationStateSnapshot(
-                    [],
-                    NextWakeAt: _villageMembershipVerificationNotBeforeUtc > DateTimeOffset.UtcNow
-                        ? _villageMembershipVerificationNotBeforeUtc
-                        : DateTimeOffset.UtcNow.AddSeconds(30));
-            }
-
-            var immediateWorkRequested = _automationPassRuntime.ConsumeImmediateWorkRequest();
-            if (!immediateWorkRequested)
-            {
-                await MaybeTakeIdleBreakAsync(options, cancellationToken);
-                immediateWorkRequested = _automationPassRuntime.ConsumeImmediateWorkRequest();
-            }
-            if (!immediateWorkRequested)
-            {
-                await MaybeDoIdleBrowseAsync(options, cancellationToken);
-            }
-
-            await HonorPendingVillageSwitchAsync(options, cancellationToken);
-            var prioritizeDeadlineWork = _smartSleepPrioritizeDeadlineWorkOnWake;
-            if (!prioritizeDeadlineWork)
-            {
-                var forceVillageStatusSweep = _villageStatusRoundRuntime.ConsumeForceRequest();
-                await MaybeRunVillageStatusSweepAsync(options, cancellationToken, forceVillageStatusSweep);
-            }
-            else
-            {
-                AppendLog("[smart-sleep] deadline wake is checking queued work before Village scan.");
-            }
-            await EnsureContinuousLoopConstructionStatusAsync(options, cancellationToken);
-            await MaybeAnalyzeNewVillageDuringContinuousLoopAsync(options, cancellationToken);
-            await EnsureContinuousLoopRuntimeItemsAsync(options, cancellationToken);
-            await MaybeCheckInboxDuringContinuousLoopAsync(cancellationToken);
-
-            var next = SelectNextQueueItemForContinuousLoop();
-            if (next is not null)
-            {
-                _smartSleepPrioritizeDeadlineWorkOnWake = false;
-                AppendLog(
-                    $"[LOOP {tickId}] PICK group={next.Group}, task={next.TaskName}, "
-                    + $"retries={next.Retries}/{next.MaxRetries}");
-                _automationSessionRuntime.MarkActivePass();
-                return new AutomationStateSnapshot([AutomationCandidate.FromQueueItem(next)]);
-            }
-
-            if (prioritizeDeadlineWork)
-            {
-                _smartSleepPrioritizeDeadlineWorkOnWake = false;
-                var forceVillageStatusSweep = _villageStatusRoundRuntime.ConsumeForceRequest();
-                await MaybeRunVillageStatusSweepAsync(options, cancellationToken, forceVillageStatusSweep);
-                await EnsureContinuousLoopRuntimeItemsAsync(options, cancellationToken);
-                next = SelectNextQueueItemForContinuousLoop();
-                if (next is not null)
-                {
-                    AppendLog(
-                        $"[LOOP {tickId}] PICK group={next.Group}, task={next.TaskName}, "
-                        + $"retries={next.Retries}/{next.MaxRetries}");
-                    _automationSessionRuntime.MarkActivePass();
-                    return new AutomationStateSnapshot([AutomationCandidate.FromQueueItem(next)]);
-                }
-            }
-
-            await MaybeKeepBrowserFreshDuringContinuousLoopAsync(options, cancellationToken);
-            var waitDelay = ResolveContinuousLoopWaitDelay(options);
-            var smartSleepDelay = ResolveSmartSleepWaitDelay();
-            DateTimeOffset? smartSleepDeadline = smartSleepDelay is { } trustedDelay
-                ? DateTimeOffset.UtcNow.Add(trustedDelay)
-                : null;
-            var smartSleepRequested = TryRequestSmartSleep(smartSleepDeadline);
-            var totalSeconds = AutomationDeadlinePolicy.ResolveWaitSeconds(
-                waitDelay,
-                options,
-                networkBackoff: false);
-            if (_automationSessionRuntime.ShouldPublishIdleHeartbeat(LoopIdleHeartbeatInterval))
-            {
-                AppendLog($"[LOOP {tickId}] idle — nothing ready, waiting {totalSeconds}s");
-            }
-            var nextWakeAt = DateTimeOffset.UtcNow.AddSeconds(totalSeconds);
-            if (!smartSleepRequested
-                && options.ContinuousKeepAliveEnabled
-                && _automationSessionRuntime.NextKeepAliveAtUtc > DateTimeOffset.UtcNow
-                && _automationSessionRuntime.NextKeepAliveAtUtc < nextWakeAt)
-            {
-                nextWakeAt = _automationSessionRuntime.NextKeepAliveAtUtc;
-            }
-            return new AutomationStateSnapshot(
-                [],
-                NextWakeAt: nextWakeAt);
-        }
-        catch (OperationCanceledException)
-        {
-            throw;
-        }
-        catch (AccountAccessException ex)
-        {
-            await HoldAccountAutomationAsync(ex);
-            throw;
-        }
-        catch (Exception ex) when (AutomationNetworkBackoff.IsTransientConnectionFailure(ex))
-        {
-            if (TryScheduleAutomaticProxyRecovery(options))
-            {
-                return new AutomationStateSnapshot([], IsComplete: true);
-            }
-            throw;
-        }
-        catch (Exception ex)
-        {
-            AppendLog(
-                $"[LOOP {tickId}] FAIL {tickStopwatch.Elapsed.TotalSeconds:F1}s | "
-                + FormatExceptionForLog(ex));
-            var retrySeconds = AutomationDeadlinePolicy.ResolveWaitSeconds(
-                null,
-                options,
-                networkBackoff: false);
-            return new AutomationStateSnapshot(
-                [],
-                NextWakeAt: DateTimeOffset.UtcNow.AddSeconds(retrySeconds));
         }
     }
 

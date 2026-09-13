@@ -483,9 +483,7 @@ public partial class MainWindow : Window
         var automationPass = new AutomationPassPort(
             _accountStore.ActiveAccountName,
             () => _botService.BrowserGeneration,
-            new DelegateAutomationModePassPort(
-                ReadContinuousAutomationStateAsync,
-                ExecuteContinuousAutomationActionAsync),
+            new ContinuousAutomationPass(new MainWindowContinuousAutomationPassPort(this)),
             new DelegateAutomationModePassPort(
                 ReadAutoQueueAutomationStateAsync,
                 ExecuteAutoQueueAutomationActionAsync));
