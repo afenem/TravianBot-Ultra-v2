@@ -5,6 +5,14 @@ using TbotUltra.Worker.Services;
 
 namespace TbotUltra.Desktop.Services.Orchestration;
 
+internal sealed record ContinuousAutomationDeadlineSnapshot(
+    DateTimeOffset? NextQueueDeadlineUtc,
+    DateTimeOffset? NextConstructionAvailabilityUtc,
+    DateTimeOffset? NextVillageStatusRoundUtc,
+    IReadOnlyList<QueueItem> SmartSleepItems,
+    IReadOnlySet<QueueGroup> SmartSleepDeadlineGroups,
+    DateTimeOffset? SmartSleepConstructionAvailabilityUtc = null);
+
 internal interface IContinuousAutomationPassPort
 {
     BotOptions LoadOptions();
@@ -29,8 +37,7 @@ internal interface IContinuousAutomationPassPort
     QueueItem? SelectNextQueueItem();
     void MarkActivePass();
     ValueTask MaybeKeepBrowserFreshAsync(BotOptions options, CancellationToken cancellationToken);
-    TimeSpan? ResolveWaitDelay(BotOptions options);
-    TimeSpan? ResolveSmartSleepWaitDelay();
+    ContinuousAutomationDeadlineSnapshot ReadDeadlines(BotOptions options);
     bool TryRequestSmartSleep(DateTimeOffset? trustedDeadlineUtc);
     bool ShouldPublishIdleHeartbeat(TimeSpan interval);
     void Log(string message);
@@ -135,9 +142,32 @@ internal sealed class ContinuousAutomationPass(
             }
 
             await port.MaybeKeepBrowserFreshAsync(options, cancellationToken);
-            var waitDelay = port.ResolveWaitDelay(options);
-            var smartSleepDelay = port.ResolveSmartSleepWaitDelay();
             var nowForDeadline = _timeProvider.GetUtcNow();
+            ContinuousAutomationDeadlineSnapshot deadlines;
+            try
+            {
+                deadlines = port.ReadDeadlines(options);
+            }
+            catch (Exception ex)
+            {
+                port.Log($"[smart-sleep] deadline calculation failed; using fallback check: {ex.Message}");
+                deadlines = new ContinuousAutomationDeadlineSnapshot(
+                    null,
+                    null,
+                    null,
+                    [],
+                    SmartSleepDeadlinePolicy.AllGroups.ToHashSet());
+            }
+            var waitDelay = AutomationDeadlinePolicy.ResolveNextDelay(
+                nowForDeadline,
+                deadlines.NextQueueDeadlineUtc,
+                deadlines.NextConstructionAvailabilityUtc,
+                deadlines.NextVillageStatusRoundUtc);
+            var smartSleepDelay = SmartSleepDeadlinePolicy.ResolveNextDelay(
+                nowForDeadline,
+                deadlines.SmartSleepItems,
+                deadlines.SmartSleepDeadlineGroups,
+                deadlines.SmartSleepConstructionAvailabilityUtc);
             DateTimeOffset? smartSleepDeadline = smartSleepDelay is { } trustedDelay
                 ? nowForDeadline.Add(trustedDelay)
                 : null;

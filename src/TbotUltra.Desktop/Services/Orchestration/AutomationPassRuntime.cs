@@ -1,4 +1,5 @@
 using TbotUltra.Desktop.Services;
+using TbotUltra.Worker.Domain;
 
 namespace TbotUltra.Desktop.Services.Orchestration;
 
@@ -9,6 +10,9 @@ internal sealed class AutomationPassRuntime
     private long _currentContinuousPassId;
     private long _autoQueueRunLogId;
     private int _immediateWorkRequested;
+    private int _prioritizeDeadlineWorkOnWake;
+    private IReadOnlySet<QueueGroup> _smartSleepDeadlineGroups =
+        SmartSleepDeadlinePolicy.AllGroups.ToHashSet();
 
     internal long BeginContinuousPass()
     {
@@ -33,6 +37,17 @@ internal sealed class AutomationPassRuntime
         Interlocked.Exchange(ref _immediateWorkRequested, 0) == 1;
 
     internal bool IsImmediateWorkRequested => Volatile.Read(ref _immediateWorkRequested) == 1;
+
+    internal bool PrioritizeDeadlineWorkOnWake
+    {
+        get => Volatile.Read(ref _prioritizeDeadlineWorkOnWake) == 1;
+        set => Interlocked.Exchange(ref _prioritizeDeadlineWorkOnWake, value ? 1 : 0);
+    }
+
+    internal IReadOnlySet<QueueGroup> SmartSleepDeadlineGroups => _smartSleepDeadlineGroups;
+
+    internal void SetSmartSleepDeadlineGroups(IReadOnlySet<QueueGroup> groups) =>
+        _smartSleepDeadlineGroups = groups.ToHashSet();
 
     internal VillageBatchSnapshot SnapshotVillageBatch(string? verifiedVillageKey) =>
         _villageBatch.SnapshotFor(verifiedVillageKey);

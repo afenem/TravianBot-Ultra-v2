@@ -202,6 +202,7 @@ public partial class MainWindow : Window
     private long _operationCounter;
     private readonly LoopController _loopController;
     private readonly AutomationDesk _automationDesk;
+    private readonly AutomationQueueItemLifecycle _automationQueueItemLifecycle;
     private readonly AutomationPassRuntime _automationPassRuntime = new();
     private readonly AutomationIdlePacing _automationIdlePacing = new();
     private readonly AutomationNetworkBackoff _automationNetworkBackoff = new();
@@ -480,13 +481,17 @@ public partial class MainWindow : Window
         _botService = new DesktopBotService(taskRunner, queueStore, queueScheduler, queueExecutor);
         _villageStatusRoundRuntime = new VillageStatusRoundRuntime(
             new FileVillageStatusRoundStatePort(_projectRoot));
+        _automationQueueItemLifecycle = new AutomationQueueItemLifecycle(
+            new MainWindowAutomationQueueItemLifecyclePort(this));
+        var automationActionExecutor = new AutomationActionExecutor(
+            new MainWindowAutomationActionExecutionPort(this, _automationQueueItemLifecycle));
         var automationPass = new AutomationPassPort(
             _accountStore.ActiveAccountName,
             () => _botService.BrowserGeneration,
-            new ContinuousAutomationPass(new MainWindowContinuousAutomationPassPort(this)),
-            new DelegateAutomationModePassPort(
-                ReadAutoQueueAutomationStateAsync,
-                ExecuteAutoQueueAutomationActionAsync));
+            new ContinuousAutomationPass(
+                new MainWindowContinuousAutomationPassPort(this, automationActionExecutor)),
+            new AutoQueueAutomationPass(
+                new MainWindowAutoQueueAutomationPassPort(this, automationActionExecutor)));
         _automationDesk = new AutomationDesk(_loopController, automationPass, automationPass);
         _automationDesk.Updated += AutomationDesk_Updated;
         _heroPanelService = new HeroPanelService(new DesktopHeroPanelClient(_botService), _botConfigStore);

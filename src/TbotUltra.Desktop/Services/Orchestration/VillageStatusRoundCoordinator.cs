@@ -78,22 +78,3 @@ internal sealed class VillageStatusRoundCoordinator(Func<int, int, int>? nextRan
         return shuffled;
     }
 }
-
-internal sealed class DelegateVillageStatusRoundPort(
-    Func<CancellationToken, ValueTask> prepareAsync,
-    Func<VillageStatusRoundVillage, int, int, bool, CancellationToken, ValueTask<VillageStatusRoundVisitResult>> visitAsync,
-    Func<CancellationToken, ValueTask> delayBeforeNextVillageAsync) : IVillageStatusRoundPort
-{
-    public ValueTask PrepareAsync(CancellationToken cancellationToken) => prepareAsync(cancellationToken);
-
-    public ValueTask<VillageStatusRoundVisitResult> VisitAsync(
-        VillageStatusRoundVillage village,
-        int villageNumber,
-        int villageCount,
-        bool inboxStatusChecked,
-        CancellationToken cancellationToken) =>
-        visitAsync(village, villageNumber, villageCount, inboxStatusChecked, cancellationToken);
-
-    public ValueTask DelayBeforeNextVillageAsync(CancellationToken cancellationToken) =>
-        delayBeforeNextVillageAsync(cancellationToken);
-}

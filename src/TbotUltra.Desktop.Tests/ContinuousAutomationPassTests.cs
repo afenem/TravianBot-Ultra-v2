@@ -57,7 +57,8 @@ public sealed class ContinuousAutomationPassTests
     {
         var preparation = new InMemoryContinuousAutomationPassPort
         {
-            WaitDelay = TimeSpan.FromSeconds(75),
+            Deadlines = new ContinuousAutomationDeadlineSnapshot(
+                Now.AddSeconds(75), null, null, [], SmartSleepDeadlinePolicy.AllGroups.ToHashSet()),
         };
         var delay = new ControlledDelay();
         var pass = new ContinuousAutomationPass(preparation, new FixedTimeProvider(Now));
@@ -244,7 +245,8 @@ public sealed class ContinuousAutomationPassTests
         public int ChromiumPreparationCount { get; private set; }
         public int AccountHoldCount { get; private set; }
         public List<string> Trace { get; } = [];
-        public TimeSpan WaitDelay { get; init; } = TimeSpan.FromMinutes(1);
+        public ContinuousAutomationDeadlineSnapshot Deadlines { get; init; } = new(
+            Now.AddMinutes(1), null, null, [], SmartSleepDeadlinePolicy.AllGroups.ToHashSet());
         public bool BlockMembershipVerification { get; init; }
         public Exception? MembershipFailure { get; init; }
         public TaskCompletionSource ChromiumPreparationStarted { get; } =
@@ -307,8 +309,7 @@ public sealed class ContinuousAutomationPassTests
         }
         public void MarkActivePass() => ActivePassCount++;
         public ValueTask MaybeKeepBrowserFreshAsync(BotOptions options, CancellationToken cancellationToken) => ValueTask.CompletedTask;
-        public TimeSpan? ResolveWaitDelay(BotOptions options) => WaitDelay;
-        public TimeSpan? ResolveSmartSleepWaitDelay() => null;
+        public ContinuousAutomationDeadlineSnapshot ReadDeadlines(BotOptions options) => Deadlines;
         public bool TryRequestSmartSleep(DateTimeOffset? trustedDeadlineUtc) => false;
         public bool ShouldPublishIdleHeartbeat(TimeSpan interval) => false;
         public void Log(string message) { }

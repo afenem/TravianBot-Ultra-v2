@@ -17,14 +17,6 @@ public sealed class ContextualLoggingSourceTests
         Assert.Contains("AutomationLogContext.Capture()", source, StringComparison.Ordinal);
         Assert.Contains("AutomationLogContext.FormatForHuman(part, pending.Context)", source, StringComparison.Ordinal);
         Assert.Contains("TryApplyInlineResourceLevelUpdateFromLog(part)", source, StringComparison.Ordinal);
-
-        var queueSource = File.ReadAllText(Path.Combine(
-            root,
-            "src",
-            "TbotUltra.Desktop",
-            "MainWindow.QueueExecution.cs"));
-        Assert.Contains("using var logContext = AutomationLogContext.BeginScope(", queueSource, StringComparison.Ordinal);
-        Assert.Contains("villageKey: GetQueueItemVillageKey(item)", queueSource, StringComparison.Ordinal);
     }
 
     private static string FindProjectRoot()

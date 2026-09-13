@@ -106,17 +106,3 @@ internal sealed class AutomationRuntimeItemReconciler(
                     StringComparison.OrdinalIgnoreCase)));
     }
 }
-
-internal sealed class DelegateAutomationRuntimeQueuePort(
-    Func<AutomationRuntimeItemSpec, QueueItem> enqueue,
-    Func<Guid, Dictionary<string, string>, bool> updatePendingPayload,
-    Func<Guid, int, bool> updatePendingPriority) : IAutomationRuntimeQueuePort
-{
-    public QueueItem Enqueue(AutomationRuntimeItemSpec spec) => enqueue(spec);
-
-    public bool UpdatePendingPayload(Guid id, Dictionary<string, string> payload) =>
-        updatePendingPayload(id, payload);
-
-    public bool UpdatePendingPriority(Guid id, int priority) =>
-        updatePendingPriority(id, priority);
-}

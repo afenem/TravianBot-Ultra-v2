@@ -15,9 +15,6 @@ public partial class MainWindow
     private bool _sessionPacingSleepInProgress;
     private bool _sessionPacingWakeInProgress;
     private bool _sessionPacingSleepDeferredForManualOperation;
-    private bool _smartSleepForceVillageScanOnWake;
-    private bool _smartSleepPrioritizeDeadlineWorkOnWake;
-    private HashSet<QueueGroup> _smartSleepDeadlineGroups = SmartSleepDeadlinePolicy.AllGroups.ToHashSet();
     private SmartSleepSettings _smartSleepSettings = new(
         PacingDefaults.SmartSleepEnabled,
         PacingDefaults.SmartSleepMinimumOpportunityMinutes,
@@ -105,8 +102,8 @@ public partial class MainWindow
             ReadInt(config, BotOptionPayloadKeys.SmartSleepWakeAfterMinutes, PacingDefaults.SmartSleepWakeAfterMinutes, 0, 1440),
             ReadInt(config, BotOptionPayloadKeys.SmartSleepFallbackMinMinutes, PacingDefaults.SmartSleepFallbackMinMinutes, 1, 10080),
             ReadInt(config, BotOptionPayloadKeys.SmartSleepFallbackMaxMinutes, PacingDefaults.SmartSleepFallbackMaxMinutes, 1, 10080));
-        _smartSleepDeadlineGroups = SmartSleepDeadlinePolicy.ReadGroups(
-            config[BotOptionPayloadKeys.SmartSleepDeadlineGroups]);
+        _automationPassRuntime.SetSmartSleepDeadlineGroups(SmartSleepDeadlinePolicy.ReadGroups(
+            config[BotOptionPayloadKeys.SmartSleepDeadlineGroups]));
         _sessionPacer.Configure(new SessionPacerSettings(
             sessionPacingEnabled || smartSleepEnabled,
             ReadInt(config, BotOptionPayloadKeys.SessionPacingRunMinMinutes, PacingDefaults.SessionPacingRunMinMinutes, 1, 10080),
@@ -177,8 +174,8 @@ public partial class MainWindow
     {
         _sleepSnapshot = SleepSnapshot.Idle;
         _sessionPacingSleepDeferredForManualOperation = false;
-        _smartSleepForceVillageScanOnWake = false;
-        _smartSleepPrioritizeDeadlineWorkOnWake = false;
+        _villageStatusRoundRuntime.SetForceOnWakeRequest(false);
+        _automationPassRuntime.PrioritizeDeadlineWorkOnWake = false;
         _pacingPauseRequestCount = 0;
         _sessionPacer.Reset();
     }
@@ -395,9 +392,8 @@ public partial class MainWindow
                 return;
             }
 
-            if (_smartSleepForceVillageScanOnWake)
+            if (_villageStatusRoundRuntime.ConsumeForceOnWakeRequest())
             {
-                _smartSleepForceVillageScanOnWake = false;
                 _villageStatusRoundRuntime.RequestForce();
                 AppendLog("[smart-sleep] fallback wake will run one Village Status Round.");
             }
@@ -848,8 +844,8 @@ public partial class MainWindow
         var requested = _sessionPacer.RequestSmartSleep(wakeAt);
         if (requested)
         {
-            _smartSleepForceVillageScanOnWake = plan.UsesFallback;
-            _smartSleepPrioritizeDeadlineWorkOnWake = !plan.UsesFallback;
+            _villageStatusRoundRuntime.SetForceOnWakeRequest(plan.UsesFallback);
+            _automationPassRuntime.PrioritizeDeadlineWorkOnWake = !plan.UsesFallback;
         }
         return requested;
     }

@@ -1,5 +1,6 @@
 using TbotUltra.Desktop.Services;
 using TbotUltra.Desktop.Services.Orchestration;
+using TbotUltra.Worker.Domain;
 using Xunit;
 
 namespace TbotUltra.Desktop.Tests;
@@ -66,5 +67,17 @@ public sealed class AutomationPassRuntimeTests
         runtime.ObserveVerifiedVillage("b");
 
         Assert.Equal("a", runtime.SnapshotVillageBatch("b").VillageKey);
+    }
+
+    [Fact]
+    public void SmartSleepWakeState_IsOwnedByTheSharedRuntime()
+    {
+        var runtime = new AutomationPassRuntime();
+
+        runtime.SetSmartSleepDeadlineGroups(new HashSet<QueueGroup> { QueueGroup.Construction });
+        runtime.PrioritizeDeadlineWorkOnWake = true;
+
+        Assert.True(runtime.PrioritizeDeadlineWorkOnWake);
+        Assert.Equal([QueueGroup.Construction], runtime.SmartSleepDeadlineGroups);
     }
 }

@@ -61,6 +61,18 @@ public sealed class VillageStatusRoundRuntimeTests
     }
 
     [Fact]
+    public void ForceOnWakeRequest_RemainsSeparateUntilWakeConsumesIt()
+    {
+        var runtime = CreateRuntime(new InMemoryStatePort());
+
+        runtime.SetForceOnWakeRequest(true);
+
+        Assert.False(runtime.ConsumeForceRequest());
+        Assert.True(runtime.ConsumeForceOnWakeRequest());
+        Assert.False(runtime.ConsumeForceOnWakeRequest());
+    }
+
+    [Fact]
     public void ManualRunGate_AllowsOnlyOneOwnerUntilReleased()
     {
         var runtime = CreateRuntime(new InMemoryStatePort());

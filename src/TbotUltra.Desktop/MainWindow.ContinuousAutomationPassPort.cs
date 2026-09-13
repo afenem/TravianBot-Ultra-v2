@@ -1,4 +1,6 @@
 using TbotUltra.Core.Configuration;
+using TbotUltra.Core.Tasks;
+using TbotUltra.Desktop.Services;
 using TbotUltra.Desktop.Services.Orchestration;
 using TbotUltra.Worker.Domain;
 using TbotUltra.Worker.Services;
@@ -7,7 +9,9 @@ namespace TbotUltra.Desktop;
 
 public partial class MainWindow
 {
-    private sealed class MainWindowContinuousAutomationPassPort(MainWindow owner)
+    private sealed class MainWindowContinuousAutomationPassPort(
+        MainWindow owner,
+        AutomationActionExecutor actionExecutor)
         : IContinuousAutomationPassPort
     {
         public BotOptions LoadOptions() => owner.LoadBotOptions();
@@ -26,8 +30,8 @@ public partial class MainWindow
 
         public bool PrioritizeDeadlineWorkOnWake
         {
-            get => owner._smartSleepPrioritizeDeadlineWorkOnWake;
-            set => owner._smartSleepPrioritizeDeadlineWorkOnWake = value;
+            get => owner._automationPassRuntime.PrioritizeDeadlineWorkOnWake;
+            set => owner._automationPassRuntime.PrioritizeDeadlineWorkOnWake = value;
         }
 
         public ValueTask EnsureChromiumInstalledAsync() =>
@@ -92,10 +96,55 @@ public partial class MainWindow
             CancellationToken cancellationToken) =>
             new(owner.MaybeKeepBrowserFreshDuringContinuousLoopAsync(options, cancellationToken));
 
-        public TimeSpan? ResolveWaitDelay(BotOptions options) =>
-            owner.ResolveContinuousLoopWaitDelay(options);
+        public ContinuousAutomationDeadlineSnapshot ReadDeadlines(BotOptions options)
+        {
+            var now = DateTimeOffset.UtcNow;
+            var relevantItems = owner.GetContinuousLoopRelevantQueueItems();
+            var nextQueueDeadline = owner.GetContinuousLoopConsideredGroupsInOrder().Count <= 0
+                ? null
+                : relevantItems
+                    .Where(item => item.Status == QueueStatus.Pending && item.NextAttemptAt > now)
+                    .Select(item => (DateTimeOffset?)item.NextAttemptAt)
+                    .Min();
+            DateTimeOffset? nextVillageStatusRound = options.VillageStatusSweepEnabled
+                ? owner.GetVillageStatusSweepNextScanUtc()
+                : null;
+            var forecast = owner.ResolveNextContinuousLoopForecast(now);
+            var nextConstructionAvailability = forecast.Item?.Group == QueueGroup.Construction
+                && forecast.State == ContinuousLoopForecastState.Waiting
+                ? forecast.ReadyAtUtc
+                : null;
+            if (nextConstructionAvailability is DateTimeOffset constructionDeadline
+                && (nextQueueDeadline is null || constructionDeadline < nextQueueDeadline.Value))
+            {
+                owner.AppendLoopPickVerbose(
+                    $"[loop-pick:verbose] next wake follows humanized construction availability at "
+                        + $"'{owner.FormatQueueServerTime(constructionDeadline)}' "
+                        + $"for {forecast.Item?.DisplayName ?? forecast.Item?.TaskName}",
+                    $"construction-wake:{forecast.Item?.Id}:{constructionDeadline.UtcTicks}");
+            }
 
-        public TimeSpan? ResolveSmartSleepWaitDelay() => owner.ResolveSmartSleepWaitDelay();
+            var smartSleepItems = relevantItems
+                .Where(item => owner._automationPassRuntime.SmartSleepDeadlineGroups.Contains(item.Group))
+                .ToList();
+            var smartSleepForecast = owner.ResolveNextContinuousLoopForecast(
+                now,
+                queueItemsOverride: smartSleepItems);
+            DateTimeOffset? smartSleepConstructionAvailability = null;
+            if (smartSleepForecast.Item?.Group == QueueGroup.Construction
+                && smartSleepForecast.State == ContinuousLoopForecastState.Waiting)
+            {
+                smartSleepConstructionAvailability = smartSleepForecast.ReadyAtUtc;
+            }
+
+            return new ContinuousAutomationDeadlineSnapshot(
+                nextQueueDeadline,
+                nextConstructionAvailability,
+                nextVillageStatusRound,
+                smartSleepItems,
+                owner._automationPassRuntime.SmartSleepDeadlineGroups,
+                smartSleepConstructionAvailability);
+        }
 
         public bool TryRequestSmartSleep(DateTimeOffset? trustedDeadlineUtc) =>
             owner.TryRequestSmartSleep(trustedDeadlineUtc);
@@ -113,6 +162,6 @@ public partial class MainWindow
         public ValueTask<AutomationActionOutcome> ExecuteAsync(
             AutomationCandidate action,
             CancellationToken cancellationToken) =>
-            owner.ExecuteContinuousAutomationActionAsync(action, cancellationToken);
+            actionExecutor.ExecuteAsync(AutomationRunMode.ContinuousLoop, action, cancellationToken);
     }
 }

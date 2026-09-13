@@ -25,6 +25,7 @@ internal sealed class VillageStatusRoundRuntime(
     private string? _scheduleAccountName;
     private DateTimeOffset _nextRoundUtc = DateTimeOffset.MinValue;
     private int _forceRequested;
+    private int _forceOnWakeRequested;
     private int _manualRunInProgress;
 
     internal DateTimeOffset GetNextRoundUtc(string? accountName)
@@ -79,6 +80,12 @@ internal sealed class VillageStatusRoundRuntime(
     internal void RequestForce() => Interlocked.Exchange(ref _forceRequested, 1);
 
     internal bool ConsumeForceRequest() => Interlocked.Exchange(ref _forceRequested, 0) == 1;
+
+    internal void SetForceOnWakeRequest(bool requested) =>
+        Interlocked.Exchange(ref _forceOnWakeRequested, requested ? 1 : 0);
+
+    internal bool ConsumeForceOnWakeRequest() =>
+        Interlocked.Exchange(ref _forceOnWakeRequested, 0) == 1;
 
     internal bool TryBeginManualRun() =>
         Interlocked.CompareExchange(ref _manualRunInProgress, 1, 0) == 0;
