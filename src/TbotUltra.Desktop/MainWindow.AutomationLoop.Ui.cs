@@ -200,7 +200,7 @@ public partial class MainWindow
         {
             projection = _dashboardProjectionService.ProjectNextTask(new DashboardNextTaskRequest(
                 IsLoggedIn: true,
-                Forecast: ResolveNextContinuousLoopForecast(now),
+                Forecast: _continuousAutomationForecast.Resolve(now),
                 NowUtc: now,
                 ActiveOperationName: _dashboardActivityTracker.Current ?? _activeFunctionDisplayName));
         }

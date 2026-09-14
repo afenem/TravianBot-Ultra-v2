@@ -30,7 +30,7 @@ public partial class MainWindow
             CancellationToken cancellationToken) =>
             new(owner.HonorPendingVillageSwitchAsync(options, cancellationToken));
 
-        public QueueItem? SelectNextQueueItem() => owner.SelectNextQueueItemForContinuousLoop();
+        public QueueItem? SelectNextQueueItem() => owner._automationQueueSelection.Select();
 
         public IReadOnlyList<QueueItem> GetQueueItems() => owner._botService.GetQueueItemsForDisplay();
 

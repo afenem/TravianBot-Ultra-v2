@@ -203,6 +203,11 @@ public partial class MainWindow : Window
     private readonly LoopController _loopController;
     private readonly AutomationDesk _automationDesk;
     private readonly AutomationQueueItemLifecycle _automationQueueItemLifecycle;
+    private readonly AutomationQueueSelectionCoordinator _automationQueueSelection;
+    private readonly ContinuousAutomationForecastCoordinator _continuousAutomationForecast;
+    private readonly ContinuousRuntimeItemPreparation _continuousRuntimeItemPreparation;
+    private readonly ContinuousIdlePacing _continuousIdlePacing;
+    private readonly ContinuousVillageStatusRound _continuousVillageStatusRound;
     private readonly AutomationPassRuntime _automationPassRuntime = new();
     private readonly AutomationIdlePacing _automationIdlePacing = new();
     private readonly AutomationNetworkBackoff _automationNetworkBackoff = new();
@@ -479,8 +484,20 @@ public partial class MainWindow : Window
         var queueScheduler = new PriorityFifoQueueScheduler();
         var queueExecutor = new QueueExecutor(taskRunner);
         _botService = new DesktopBotService(taskRunner, queueStore, queueScheduler, queueExecutor);
+        _automationQueueSelection = new AutomationQueueSelectionCoordinator(
+            new MainWindowAutomationQueueSelectionPort(this));
+        _continuousAutomationForecast = new ContinuousAutomationForecastCoordinator(
+            new MainWindowContinuousAutomationForecastPort(this));
+        _continuousRuntimeItemPreparation = new ContinuousRuntimeItemPreparation(
+            new MainWindowContinuousRuntimeItemPreparationPort(this));
+        _continuousIdlePacing = new ContinuousIdlePacing(
+            _automationIdlePacing,
+            new MainWindowContinuousIdlePacingPort(this));
         _villageStatusRoundRuntime = new VillageStatusRoundRuntime(
             new FileVillageStatusRoundStatePort(_projectRoot));
+        _continuousVillageStatusRound = new ContinuousVillageStatusRound(
+            _villageStatusRoundCoordinator,
+            new MainWindowVillageStatusRoundPort(this));
         _automationQueueItemLifecycle = new AutomationQueueItemLifecycle(
             new MainWindowAutomationQueueItemLifecyclePort(this));
         var automationActionExecutor = new AutomationActionExecutor(

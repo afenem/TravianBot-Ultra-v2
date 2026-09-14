@@ -48,12 +48,12 @@ public partial class MainWindow
         public ValueTask MaybeTakeIdleBreakAsync(
             BotOptions options,
             CancellationToken cancellationToken) =>
-            new(owner.MaybeTakeIdleBreakAsync(options, cancellationToken));
+            owner._continuousIdlePacing.MaybeTakeBreakAsync(options, cancellationToken);
 
         public ValueTask MaybeDoIdleBrowseAsync(
             BotOptions options,
             CancellationToken cancellationToken) =>
-            new(owner.MaybeDoIdleBrowseAsync(options, cancellationToken));
+            owner._continuousIdlePacing.MaybeBrowseAsync(options, cancellationToken);
 
         public ValueTask HonorPendingVillageSwitchAsync(
             BotOptions options,
@@ -67,7 +67,10 @@ public partial class MainWindow
             BotOptions options,
             CancellationToken cancellationToken,
             bool force) =>
-            new(owner.MaybeRunVillageStatusSweepAsync(options, cancellationToken, force));
+            owner._continuousVillageStatusRound.RunIfDueAsync(
+                options,
+                cancellationToken,
+                force);
 
         public ValueTask EnsureConstructionStatusAsync(
             BotOptions options,
@@ -82,12 +85,12 @@ public partial class MainWindow
         public ValueTask EnsureRuntimeItemsAsync(
             BotOptions options,
             CancellationToken cancellationToken) =>
-            new(owner.EnsureContinuousLoopRuntimeItemsAsync(options, cancellationToken));
+            owner._continuousRuntimeItemPreparation.PrepareAsync(options, cancellationToken);
 
         public ValueTask MaybeCheckInboxAsync(CancellationToken cancellationToken) =>
             new(owner.MaybeCheckInboxDuringContinuousLoopAsync(cancellationToken));
 
-        public QueueItem? SelectNextQueueItem() => owner.SelectNextQueueItemForContinuousLoop();
+        public QueueItem? SelectNextQueueItem() => owner._automationQueueSelection.Select();
 
         public void MarkActivePass() => owner._automationSessionRuntime.MarkActivePass();
 
@@ -109,7 +112,7 @@ public partial class MainWindow
             DateTimeOffset? nextVillageStatusRound = options.VillageStatusSweepEnabled
                 ? owner.GetVillageStatusSweepNextScanUtc()
                 : null;
-            var forecast = owner.ResolveNextContinuousLoopForecast(now);
+            var forecast = owner._continuousAutomationForecast.Resolve(now);
             var nextConstructionAvailability = forecast.Item?.Group == QueueGroup.Construction
                 && forecast.State == ContinuousLoopForecastState.Waiting
                 ? forecast.ReadyAtUtc
@@ -127,7 +130,7 @@ public partial class MainWindow
             var smartSleepItems = relevantItems
                 .Where(item => owner._automationPassRuntime.SmartSleepDeadlineGroups.Contains(item.Group))
                 .ToList();
-            var smartSleepForecast = owner.ResolveNextContinuousLoopForecast(
+            var smartSleepForecast = owner._continuousAutomationForecast.Resolve(
                 now,
                 queueItemsOverride: smartSleepItems);
             DateTimeOffset? smartSleepConstructionAvailability = null;
