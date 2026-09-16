@@ -1,5 +1,6 @@
 using System.Diagnostics;
 using System.Runtime.CompilerServices;
+using System.Runtime.InteropServices;
 using System.Text.Json;
 using System.Text.Json.Serialization;
 
@@ -17,13 +18,21 @@ public static class TrackedBrowserWindowHider
     private static readonly JsonSerializerOptions SerializerOptions = new();
     private static volatile bool _hidden = true;
 
+    private delegate bool EnumWindowsProc(IntPtr hWnd, IntPtr lParam);
+
     private sealed record TrackedBrowser(
         [property: JsonPropertyName("pid")] int Pid,
         [property: JsonPropertyName("startedAtUtcTicks")] long StartedAtUtcTicks,
         [property: JsonPropertyName("executablePath")] string ExecutablePath);
 
-    [System.Runtime.InteropServices.DllImport("user32.dll", SetLastError = true)]
+    [DllImport("user32.dll", SetLastError = true)]
     private static extern bool ShowWindow(IntPtr hWnd, int nCmdShow);
+
+    [DllImport("user32.dll", SetLastError = true)]
+    private static extern bool EnumWindows(EnumWindowsProc lpEnumFunc, IntPtr lParam);
+
+    [DllImport("user32.dll", SetLastError = true)]
+    private static extern uint GetWindowThreadProcessId(IntPtr hWnd, out uint processId);
 
     public static bool IsHidden => _hidden;
 
@@ -147,13 +156,7 @@ public static class TrackedBrowserWindowHider
                     continue;
                 }
 
-                var windowHandle = process.MainWindowHandle;
-                if (windowHandle == IntPtr.Zero)
-                {
-                    continue;
-                }
-
-                ShowWindow(windowHandle, _hidden ? SwHide : SwShow);
+                ApplyToAllProcessWindows(entry.Pid, _hidden ? SwHide : SwShow);
             }
             catch
             {
@@ -164,5 +167,31 @@ public static class TrackedBrowserWindowHider
                 process?.Dispose();
             }
         }
+    }
+
+    private static void ApplyToAllProcessWindows(int pid, int command)
+    {
+        if (!OperatingSystem.IsWindows())
+        {
+            return;
+        }
+
+        EnumWindows((hWnd, _) =>
+        {
+            try
+            {
+                GetWindowThreadProcessId(hWnd, out var windowPid);
+                if (windowPid == (uint)pid)
+                {
+                    ShowWindow(hWnd, command);
+                }
+            }
+            catch
+            {
+                // A window can disappear during enumeration.
+            }
+
+            return true;
+        }, IntPtr.Zero);
     }
 }
