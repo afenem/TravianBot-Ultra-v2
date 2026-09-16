@@ -51,17 +51,20 @@ public static class TrackedBrowserWindowHider
 
     private static async Task MonitorAsync()
     {
-        var registryPath = Path.Combine(
-            AppContext.BaseDirectory,
-            "config",
-            "cache",
-            "launched-browsers.json");
+        var registryPaths = new[]
+        {
+            Path.Combine(AppContext.BaseDirectory, "config", "cache", "launched-browsers.json"),
+            Path.Combine(Directory.GetCurrentDirectory(), "config", "cache", "launched-browsers.json"),
+        };
 
         while (true)
         {
             try
             {
-                ApplyToTrackedWindows(registryPath);
+                foreach (var registryPath in registryPaths.Distinct(StringComparer.OrdinalIgnoreCase))
+                {
+                    ApplyToTrackedWindows(registryPath);
+                }
             }
             catch
             {
@@ -81,12 +84,16 @@ public static class TrackedBrowserWindowHider
 
     private static void ApplyToTrackedWindows()
     {
-        var registryPath = Path.Combine(
-            AppContext.BaseDirectory,
-            "config",
-            "cache",
-            "launched-browsers.json");
-        ApplyToTrackedWindows(registryPath);
+        var registryPaths = new[]
+        {
+            Path.Combine(AppContext.BaseDirectory, "config", "cache", "launched-browsers.json"),
+            Path.Combine(Directory.GetCurrentDirectory(), "config", "cache", "launched-browsers.json"),
+        };
+
+        foreach (var registryPath in registryPaths.Distinct(StringComparer.OrdinalIgnoreCase))
+        {
+            ApplyToTrackedWindows(registryPath);
+        }
     }
 
     private static void ApplyToTrackedWindows(string registryPath)
@@ -120,7 +127,6 @@ public static class TrackedBrowserWindowHider
             {
                 process = Process.GetProcessById(entry.Pid);
 
-                // Windows can reuse a PID. The recorded start time must still match exactly.
                 if (process.StartTime.ToUniversalTime().Ticks != entry.StartedAtUtcTicks)
                 {
                     continue;
