@@ -136,6 +136,7 @@ public partial class MainWindow
 
         bottomPanel.Children.Insert(settingsIndex, controlGrid);
         _windowControlsAdded = true;
+        Closed += (_, _) => CleanupTrayIcon();
         UpdateBrowserVisibilityButton();
     }
 
