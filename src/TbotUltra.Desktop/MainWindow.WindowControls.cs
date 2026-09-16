@@ -13,6 +13,7 @@ public partial class MainWindow
     private Button? _browserVisibilityButton;
     private HwndSource? _trayHwndSource;
     private IntPtr _trayHwnd;
+    private bool _trayHookAdded;
     private bool _trayIconVisible;
 
     private const int TrayCallbackMessage = 0x8001;
@@ -169,6 +170,12 @@ public partial class MainWindow
     private void MinimizeToTray()
     {
         EnsureTrayIcon();
+        if (!_trayIconVisible)
+        {
+            AppendLog("[ui] Could not create the notification-area icon.");
+            return;
+        }
+
         ShowInTaskbar = false;
         Hide();
         AppendLog("[ui] Tbot Ultra minimized to the notification area.");
@@ -184,6 +191,7 @@ public partial class MainWindow
         Topmost = true;
         Topmost = false;
         Focus();
+        UpdateBrowserVisibilityButton();
     }
 
     private void EnsureTrayIcon()
@@ -195,7 +203,16 @@ public partial class MainWindow
 
         _trayHwnd = new WindowInteropHelper(this).EnsureHandle();
         _trayHwndSource ??= HwndSource.FromHwnd(_trayHwnd);
-        _trayHwndSource?.AddHook(TrayWndProc);
+        if (_trayHwndSource is null)
+        {
+            return;
+        }
+
+        if (!_trayHookAdded)
+        {
+            _trayHwndSource.AddHook(TrayWndProc);
+            _trayHookAdded = true;
+        }
 
         var iconHandle = GetWindowIconHandle();
         if (iconHandle == IntPtr.Zero)
@@ -209,7 +226,7 @@ public partial class MainWindow
             return;
         }
 
-        data.uVersionOrVersionForSet = NotifyIconVersion4;
+        data.uTimeoutOrVersion = NotifyIconVersion4;
         Shell_NotifyIcon(NimSetVersion, ref data);
         _trayIconVisible = true;
     }
@@ -278,5 +295,15 @@ public partial class MainWindow
         }
 
         return IntPtr.Zero;
+    }
+
+    private void CleanupTrayIcon()
+    {
+        RemoveTrayIcon();
+        if (_trayHwndSource is not null && _trayHookAdded)
+        {
+            _trayHwndSource.RemoveHook(TrayWndProc);
+            _trayHookAdded = false;
+        }
     }
 }
