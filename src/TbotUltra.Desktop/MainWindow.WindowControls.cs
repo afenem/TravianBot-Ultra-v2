@@ -1,8 +1,8 @@
-using System.Drawing;
+using System.Runtime.InteropServices;
 using System.Windows;
 using System.Windows.Controls;
+using System.Windows.Interop;
 using System.Windows.Media;
-using Forms = System.Windows.Forms;
 using TbotUltra.Worker.Infrastructure;
 
 namespace TbotUltra.Desktop;
@@ -11,9 +11,56 @@ public partial class MainWindow
 {
     private bool _windowControlsAdded;
     private Button? _browserVisibilityButton;
-    private Forms.NotifyIcon? _trayIcon;
-    private Forms.ContextMenuStrip? _trayMenu;
-    private Icon? _trayIconImage;
+    private HwndSource? _trayHwndSource;
+    private IntPtr _trayHwnd;
+    private bool _trayIconVisible;
+
+    private const int TrayCallbackMessage = 0x8001;
+    private const int WmLButtonDblClk = 0x0203;
+    private const uint NimAdd = 0x00000000;
+    private const uint NimDelete = 0x00000002;
+    private const uint NimSetVersion = 0x00000004;
+    private const uint NifMessage = 0x00000001;
+    private const uint NifIcon = 0x00000002;
+    private const uint NifTip = 0x00000004;
+    private const uint NotifyIconVersion4 = 4;
+    private const uint WmGetIcon = 0x007F;
+    private const IntPtr IconSmall2 = 2;
+    private const IntPtr IconSmall = 0;
+    private const int GclpHicon = -14;
+    private const int GclpHiconSm = -34;
+
+    [StructLayout(LayoutKind.Sequential, CharSet = CharSet.Unicode)]
+    private struct NotifyIconData
+    {
+        public uint cbSize;
+        public IntPtr hWnd;
+        public uint uID;
+        public uint uFlags;
+        public uint uCallbackMessage;
+        public IntPtr hIcon;
+        [MarshalAs(UnmanagedType.ByValTStr, SizeConst = 128)]
+        public string szTip;
+        public uint dwState;
+        public uint dwStateMask;
+        [MarshalAs(UnmanagedType.ByValTStr, SizeConst = 256)]
+        public string szInfo;
+        public uint uTimeoutOrVersion;
+        [MarshalAs(UnmanagedType.ByValTStr, SizeConst = 64)]
+        public string szInfoTitle;
+        public uint dwInfoFlags;
+        public Guid guidItem;
+        public IntPtr hBalloonIcon;
+    }
+
+    [DllImport("shell32.dll", CharSet = CharSet.Unicode)]
+    private static extern bool Shell_NotifyIcon(uint dwMessage, ref NotifyIconData lpData);
+
+    [DllImport("user32.dll", SetLastError = true)]
+    private static extern IntPtr SendMessage(IntPtr hWnd, uint msg, IntPtr wParam, IntPtr lParam);
+
+    [DllImport("user32.dll", EntryPoint = "GetClassLongPtrW", SetLastError = true)]
+    private static extern IntPtr GetClassLongPtr(IntPtr hWnd, int nIndex);
 
     static MainWindow()
     {
@@ -28,7 +75,6 @@ public partial class MainWindow
         if (sender is MainWindow window)
         {
             window.AddWindowControlButtons();
-            window.InitializeTrayIcon();
         }
     }
 
@@ -75,7 +121,7 @@ public partial class MainWindow
             Background = FindResource("ControlBackgroundBrush") as Brush,
             BorderBrush = FindResource("BorderBrush") as Brush,
             Foreground = FindResource("TextSubtleBrush") as Brush,
-            ToolTip = "Hide Tbot Ultra and keep it running in the Windows notification area.",
+            ToolTip = "Hide Tbot Ultra in the Windows notification area while it keeps running.",
         };
         minimizeButton.Click += MinimizeBotButton_Click;
         Grid.SetColumn(minimizeButton, 1);
@@ -90,52 +136,6 @@ public partial class MainWindow
         bottomPanel.Children.Insert(settingsIndex, controlGrid);
         _windowControlsAdded = true;
         UpdateBrowserVisibilityButton();
-    }
-
-    private void InitializeTrayIcon()
-    {
-        if (_trayIcon is not null)
-        {
-            return;
-        }
-
-        try
-        {
-            var resourceInfo = Application.GetResourceStream(new Uri("/Assets/icon_windows.ico", UriKind.Relative));
-            if (resourceInfo is not null)
-            {
-                using var iconStream = resourceInfo.Stream;
-                _trayIconImage = new Icon(iconStream);
-            }
-        }
-        catch
-        {
-            _trayIconImage = null;
-        }
-
-        _trayMenu = new Forms.ContextMenuStrip();
-        _trayMenu.Items.Add("Show Tbot Ultra", null, (_, _) => Dispatcher.Invoke(RestoreFromTray));
-        _trayMenu.Items.Add("Hide Chrome", null, (_, _) => Dispatcher.Invoke(() =>
-        {
-            TrackedBrowserWindowHider.SetHidden(true);
-            UpdateBrowserVisibilityButton();
-        }));
-        _trayMenu.Items.Add("Show Chrome", null, (_, _) => Dispatcher.Invoke(() =>
-        {
-            TrackedBrowserWindowHider.SetHidden(false);
-            UpdateBrowserVisibilityButton();
-        }));
-        _trayMenu.Items.Add(new Forms.ToolStripSeparator());
-        _trayMenu.Items.Add("Exit", null, (_, _) => Dispatcher.Invoke(CloseFromTray));
-
-        _trayIcon = new Forms.NotifyIcon
-        {
-            Icon = _trayIconImage,
-            Visible = true,
-            Text = "Tbot Ultra",
-            ContextMenuStrip = _trayMenu,
-        };
-        _trayIcon.DoubleClick += (_, _) => Dispatcher.Invoke(RestoreFromTray);
     }
 
     private void BrowserVisibilityButton_Click(object sender, RoutedEventArgs e)
@@ -168,17 +168,16 @@ public partial class MainWindow
 
     private void MinimizeToTray()
     {
-        if (_trayIcon is not null)
-        {
-            _trayIcon.Visible = true;
-        }
-
+        EnsureTrayIcon();
+        ShowInTaskbar = false;
         Hide();
         AppendLog("[ui] Tbot Ultra minimized to the notification area.");
     }
 
     private void RestoreFromTray()
     {
+        RemoveTrayIcon();
+        ShowInTaskbar = true;
         Show();
         WindowState = WindowState.Normal;
         Activate();
@@ -187,24 +186,97 @@ public partial class MainWindow
         Focus();
     }
 
-    private void CloseFromTray()
+    private void EnsureTrayIcon()
     {
-        Close();
-    }
-
-    protected override void OnClosed(EventArgs e)
-    {
-        if (_trayIcon is not null)
+        if (_trayIconVisible)
         {
-            _trayIcon.Visible = false;
-            _trayIcon.Dispose();
-            _trayIcon = null;
+            return;
         }
 
-        _trayMenu?.Dispose();
-        _trayMenu = null;
-        _trayIconImage?.Dispose();
-        _trayIconImage = null;
-        base.OnClosed(e);
+        _trayHwnd = new WindowInteropHelper(this).EnsureHandle();
+        _trayHwndSource ??= HwndSource.FromHwnd(_trayHwnd);
+        _trayHwndSource?.AddHook(TrayWndProc);
+
+        var iconHandle = GetWindowIconHandle();
+        if (iconHandle == IntPtr.Zero)
+        {
+            return;
+        }
+
+        var data = CreateNotifyIconData(iconHandle);
+        if (!Shell_NotifyIcon(NimAdd, ref data))
+        {
+            return;
+        }
+
+        data.uVersionOrVersionForSet = NotifyIconVersion4;
+        Shell_NotifyIcon(NimSetVersion, ref data);
+        _trayIconVisible = true;
+    }
+
+    private void RemoveTrayIcon()
+    {
+        if (!_trayIconVisible || _trayHwnd == IntPtr.Zero)
+        {
+            return;
+        }
+
+        var data = CreateNotifyIconData(GetWindowIconHandle());
+        Shell_NotifyIcon(NimDelete, ref data);
+        _trayIconVisible = false;
+    }
+
+    private NotifyIconData CreateNotifyIconData(IntPtr iconHandle)
+    {
+        return new NotifyIconData
+        {
+            cbSize = (uint)Marshal.SizeOf<NotifyIconData>(),
+            hWnd = _trayHwnd,
+            uID = 1,
+            uFlags = NifMessage | NifIcon | NifTip,
+            uCallbackMessage = TrayCallbackMessage,
+            hIcon = iconHandle,
+            szTip = "Tbot Ultra — double-click to restore",
+            szInfo = string.Empty,
+            szInfoTitle = string.Empty,
+        };
+    }
+
+    private IntPtr GetWindowIconHandle()
+    {
+        var handle = SendMessage(_trayHwnd, WmGetIcon, IconSmall2, IntPtr.Zero);
+        if (handle != IntPtr.Zero)
+        {
+            return handle;
+        }
+
+        handle = SendMessage(_trayHwnd, WmGetIcon, IconSmall, IntPtr.Zero);
+        if (handle != IntPtr.Zero)
+        {
+            return handle;
+        }
+
+        handle = GetClassLongPtr(_trayHwnd, GclpHiconSm);
+        if (handle != IntPtr.Zero)
+        {
+            return handle;
+        }
+
+        return GetClassLongPtr(_trayHwnd, GclpHicon);
+    }
+
+    private IntPtr TrayWndProc(IntPtr hwnd, int msg, IntPtr wParam, IntPtr lParam, ref bool handled)
+    {
+        if (msg == TrayCallbackMessage)
+        {
+            var mouseMessage = unchecked((int)lParam.ToInt64());
+            if (mouseMessage == WmLButtonDblClk)
+            {
+                Dispatcher.BeginInvoke(RestoreFromTray);
+                handled = true;
+            }
+        }
+
+        return IntPtr.Zero;
     }
 }
