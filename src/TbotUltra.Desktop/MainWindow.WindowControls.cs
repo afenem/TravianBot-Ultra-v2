@@ -49,14 +49,12 @@ public partial class MainWindow
 
         _browserVisibilityButton = new Button
         {
-            Width = double.NaN,
             Height = 30,
             Margin = new Thickness(0, 0, 3, 0),
             Padding = new Thickness(6, 2, 6, 2),
             Background = FindResource("InfoBgBrush") as Brush,
             BorderBrush = FindResource("FocusBorderBrush") as Brush,
             Foreground = FindResource("InfoTextBrush") as Brush,
-            Click = null,
         };
         _browserVisibilityButton.Click += BrowserVisibilityButton_Click;
         Grid.SetColumn(_browserVisibilityButton, 0);
