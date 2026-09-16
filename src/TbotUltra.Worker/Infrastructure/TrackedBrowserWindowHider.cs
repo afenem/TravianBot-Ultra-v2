@@ -6,16 +6,16 @@ using System.Text.Json.Serialization;
 namespace TbotUltra.Worker.Infrastructure;
 
 /// <summary>
-/// Keeps Tbot-owned browser windows hidden without touching the user's normal Chrome/Edge windows.
+/// Controls visibility of Tbot-owned browser windows without touching the user's normal Chrome/Edge windows.
 /// Ownership is taken only from LaunchedBrowserRegistry's PID + start-time + executable-path records.
-/// The helper runs only on Windows and is intentionally a separate background monitor so a headed
-/// Playwright browser can remain fully functional while its native window stays invisible.
 /// </summary>
-internal static class TrackedBrowserWindowHider
+public static class TrackedBrowserWindowHider
 {
     private const int SwHide = 0;
+    private const int SwShow = 5;
     private static readonly TimeSpan PollInterval = TimeSpan.FromMilliseconds(350);
     private static readonly JsonSerializerOptions SerializerOptions = new();
+    private static volatile bool _hidden = true;
 
     private sealed record TrackedBrowser(
         [property: JsonPropertyName("pid")] int Pid,
@@ -24,6 +24,19 @@ internal static class TrackedBrowserWindowHider
 
     [System.Runtime.InteropServices.DllImport("user32.dll", SetLastError = true)]
     private static extern bool ShowWindow(IntPtr hWnd, int nCmdShow);
+
+    public static bool IsHidden => _hidden;
+
+    public static void SetHidden(bool hidden)
+    {
+        _hidden = hidden;
+        ApplyToTrackedWindows();
+    }
+
+    public static void Toggle()
+    {
+        SetHidden(!_hidden);
+    }
 
     [ModuleInitializer]
     internal static void Initialize()
@@ -48,12 +61,11 @@ internal static class TrackedBrowserWindowHider
         {
             try
             {
-                HideTrackedWindows(registryPath);
+                ApplyToTrackedWindows(registryPath);
             }
             catch
             {
-                // Hiding is best-effort. A browser that has not created its window yet will be
-                // retried on the next polling interval; automation must never fail because of this.
+                // Visibility control is best-effort. Automation must never fail because of this.
             }
 
             try
@@ -67,9 +79,19 @@ internal static class TrackedBrowserWindowHider
         }
     }
 
-    private static void HideTrackedWindows(string registryPath)
+    private static void ApplyToTrackedWindows()
     {
-        if (!File.Exists(registryPath))
+        var registryPath = Path.Combine(
+            AppContext.BaseDirectory,
+            "config",
+            "cache",
+            "launched-browsers.json");
+        ApplyToTrackedWindows(registryPath);
+    }
+
+    private static void ApplyToTrackedWindows(string registryPath)
+    {
+        if (!OperatingSystem.IsWindows() || !File.Exists(registryPath))
         {
             return;
         }
@@ -104,7 +126,6 @@ internal static class TrackedBrowserWindowHider
                     continue;
                 }
 
-                // The executable path must still be the same process we originally recorded.
                 string? executablePath;
                 try
                 {
@@ -126,11 +147,11 @@ internal static class TrackedBrowserWindowHider
                     continue;
                 }
 
-                ShowWindow(windowHandle, SwHide);
+                ShowWindow(windowHandle, _hidden ? SwHide : SwShow);
             }
             catch
             {
-                // Process may have exited or the window may not be available yet.
+                // Process may have exited or its native window may not be available yet.
             }
             finally
             {
