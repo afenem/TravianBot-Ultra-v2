@@ -1,4 +1,4 @@
-﻿<Project Sdk="Microsoft.NET.Sdk">
+<Project Sdk="Microsoft.NET.Sdk">
 
   <ItemGroup>
     <ProjectReference Include="..\TbotUltra.Core\TbotUltra.Core.csproj" />
@@ -20,6 +20,10 @@
     <UseWPF>true</UseWPF>
     <ApplicationIcon>..\..\assets\icons\icon_windows.ico</ApplicationIcon>
   </PropertyGroup>
+
+  <ItemGroup>
+    <Using Include="System.Windows.Interop" />
+  </ItemGroup>
 
   <ItemGroup>
     <Resource Include="..\..\assets\icons\icon_windows.ico" Link="Assets\icon_windows.ico" />
