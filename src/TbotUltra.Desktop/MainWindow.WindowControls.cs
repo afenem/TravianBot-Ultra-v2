@@ -25,7 +25,6 @@ public partial class MainWindow
     private const uint WmNull = 0x0000;
     private const uint TrayMenuShow = 1001;
     private const uint TrayMenuExit = 1002;
-    private const uint SmtoAbortIfHung = 0x0002;
 
     private static readonly IntPtr IconSmall2 = new(2);
     private static readonly IntPtr IconSmall = IntPtr.Zero;
@@ -54,7 +53,7 @@ public partial class MainWindow
     }
 
     [StructLayout(LayoutKind.Sequential)]
-    private struct Point
+    private struct NativePoint
     {
         public int X;
         public int Y;
@@ -70,7 +69,7 @@ public partial class MainWindow
     private static extern IntPtr GetClassLongPtr(IntPtr hWnd, int nIndex);
 
     [DllImport("user32.dll", SetLastError = true)]
-    private static extern bool GetCursorPos(out Point lpPoint);
+    private static extern bool GetCursorPos(out NativePoint lpPoint);
 
     [DllImport("user32.dll", SetLastError = true)]
     private static extern bool SetForegroundWindow(IntPtr hWnd);
